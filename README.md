@@ -68,19 +68,27 @@ Argus is a **senior-grade orchestration layer** that sits on top of a GhostDAG /
 
 ## 🚀 Quick Start
 
-### 1. Build and Initialize (Rust)
+### 1. Build and Initialize (Rust CLI)
 ```bash
 git clone https://github.com/ArgusProtocol/Argus-Synapse.git
 cd Argus-Synapse
-cargo build --release
+
+# Build the unified CLI binary
+cargo build -p argus-cli --release
 ```
 
-### 2. Launch the Linearization Engine
+### 2. Activate the CLI Node
+Once built, the `argus` binary is the primary entry point for the orchestration layer.
+
 ```bash
-cargo run --bin argus-linearizer
+# Check connectivity to your local kaspad node
+./target/release/argus check --endpoint http://localhost:9293
+
+# Start the Argus Orchestration Layer
+./target/release/argus start --rpc-port 9293 --ws-port 9292 --k 3
 ```
 
-### 3. Setup Orchestrator (Python)
+### 3. Setup Orchestrator (Python Gateway)
 ```bash
 cd python
 pip install -r requirements.txt
