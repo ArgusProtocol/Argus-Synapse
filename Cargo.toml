@@ -5,6 +5,7 @@ members = [
     "crates/argus-agent",
     "crates/argus-linearizer",
     "crates/argus-pybridge",
+    "crates/argus-cli",
 ]
 
 [workspace.package]
