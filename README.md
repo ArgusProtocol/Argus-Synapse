@@ -16,30 +16,36 @@ Argus is a **senior-grade orchestration layer** that sits on top of a GhostDAG /
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     Frontend / GNN Client                        │
-│       REST (JSON)  +  WebSocket (JSON stream)                    │
-└────────────────────────┬────────────────────────────────────────┘
-                         │  Zero-Ops API  (port 8080)
-┌────────────────────────▼────────────────────────────────────────┐
-│                  ARGUS ORCHESTRATION LAYER                       │
-│                                                                  │
-│  ┌──────────────────┐  ┌─────────────────────────────────────┐  │
-│  │  Self-Healing    │  │     Linearization Engine            │  │
-│  │  Agent (FSM)     │  │  GhostDAG 3D → flat edge stream    │  │
-│  │  + Recovery Loop │  │  PARENT_OF / BLUE_PAST / RED_PAST  │  │
-│  └────────┬─────────┘  └──────────────────┬──────────────────┘  │
-│           │                               │                      │
-│  ┌────────▼───────────────────────────────▼──────────────────┐  │
-│  │          PPO k-Optimizer  (orphan rate → k suggestion)    │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────┬───────────────────────────────┘
-                                  │  JSON-RPC + WebSocket
-┌─────────────────────────────────▼───────────────────────────────┐
-│                  GhostDAG Node  (unmodified kaspad)              │
-│   GHOSTDAG(G,k) consensus — blue_score, past(), anticone()       │
-└─────────────────────────────────────────────────────────────────┘
+```┌───────────────────────────────────────────────┐
+│           Frontend / GNN Client               │
+│  REST API (JSON) + WebSocket (JSON Stream)   │
+└─────────────────────────┬─────────────────────┘
+                          │  Zero-Ops API (port 8080)
+┌─────────────────────────▼─────────────────────┐
+│           ARGUS Orchestration Layer           │
+│                                               │
+│  ┌───────────────────┐  ┌───────────────────┐│
+│  │ Self-Healing Agent │  │ Linearization     ││
+│  │ (FSM + Recovery)   │  │ Engine            ││
+│  │                    │  │ GhostDAG 3D →     ││
+│  │                    │  │ flat edge stream  ││
+│  │                    │  │ PARENT_OF /       ││
+│  │                    │  │ BLUE_PAST / RED_PAST││
+│  └───────────┬────────┘  └───────────┬───────┘│
+│              │                       │        │
+│  ┌───────────▼───────────────────────▼────────┐
+│  │  PPO k-Optimizer (suggests k based on      │
+│  │  orphan rate / network conditions)         │
+│  └───────────────────────────────────────────┘
+└─────────────────────────┬─────────────────────┘
+                          │  JSON-RPC + WebSocket
+┌─────────────────────────▼─────────────────────┐
+│        GhostDAG Node (unmodified kaspad)     │
+│  GHOSTDAG(G,k) Consensus                      │
+│  - blue_score                                  │
+│  - past()                                     │
+│  - anticone()                                 │
+└───────────────────────────────────────────────┘
 ```
 
 ### Crate Map (Core Stack)
