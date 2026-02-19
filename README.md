@@ -144,9 +144,9 @@ Real-time linearized block stream with PHANTOM total ordering.
 ### PHANTOM Total Ordering
 Argus resolves parallel block conflicts by applying the PHANTOM sorting rule:
 1. **Primary**: Sort by `BlueScore(B)` ascending.
-2. **Secondary**: XOR tie-break: $$
+2. **Secondary**: XOR tie-break: $
 Hash(B) \oplus Hash(SelectedParent(B))
-$$
+$
 
 ### RL k-Optimization
 The RL agent (Stable-Baselines3 PPO) monitors network metrics and adjusts $k$ to maximize:
