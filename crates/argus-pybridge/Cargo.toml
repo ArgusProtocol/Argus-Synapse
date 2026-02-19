@@ -1,0 +1,19 @@
+[package]
+name = "argus-pybridge"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "argus_pybridge"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.20", features = ["extension-module", "num-bigint"] }
+argus-ghostdag = { path = "../argus-ghostdag" }
+argus-agent = { path = "../argus-agent" }
+argus-linearizer = { path = "../argus-linearizer" }
+num-bigint = "0.4"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1.36", features = ["full"] }
+tracing = "0.1"

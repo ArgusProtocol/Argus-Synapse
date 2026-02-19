@@ -29,6 +29,16 @@ pub struct ColoringOutput {
     pub k: u64,
 }
 
+/// Compute `|anticone(B) ∩ blue_set|` for a given block after coloring.
+pub fn blue_anticone_size(
+    dag: &mut DagStore,
+    hash: &BlockHash,
+    blue_set: &HashSet<BlockHash>,
+) -> GhostDagResult<u64> {
+    let ac = dag.anticone(hash)?;
+    Ok(ac.iter().filter(|h| blue_set.contains(h)).count() as u64)
+}
+
 /// Run the k-cluster coloring algorithm over the entire DAG.
 ///
 /// # Algorithm (PHANTOM §3)
@@ -69,33 +79,32 @@ pub fn color_dag(dag: &mut DagStore, k: u64) -> GhostDagResult<ColoringOutput> {
         // -----------------------------------------------------------
         // Step 1: selected_parent(B) = argmax_{P ∈ parents(B)} blue_score(P)
         // -----------------------------------------------------------
-        let parents = dag.get(&block_hash)?.parents.clone();
-        let selected_parent = parents
-            .iter()
-            .max_by(|a, b| {
-                let score_a = dag.get(a).map(|h| h.blue_score).unwrap_or(0);
-                let score_b = dag.get(b).map(|h| h.blue_score).unwrap_or(0);
-                score_a
-                    .cmp(&score_b)
-                    .then_with(|| {
-                        // Tie-break: higher hash wins (deterministic).
-                        a.cmp(b)
-                    })
-            })
-            .copied()
-            .ok_or(GhostDagError::OrphanBlock(block_hash))?;
+        let selected_parent = {
+            let header = dag.get(&block_hash)?;
+            let parents = header.parents.clone();
+            parents
+                .iter()
+                .max_by(|a, b| {
+                    let score_a = dag.get(a).map(|h| h.blue_score).unwrap_or(0);
+                    let score_b = dag.get(b).map(|h| h.blue_score).unwrap_or(0);
+                    score_a.cmp(&score_b).then_with(|| a.cmp(b))
+                })
+                .copied()
+                .ok_or(GhostDagError::OrphanBlock(block_hash))?
+        };
 
         // -----------------------------------------------------------
         // Step 2: Compute blue anticone size.
-        //   blue_anticone(B) = anticone(B) ∩ blue_set
         // -----------------------------------------------------------
-        let anticone_b = dag.anticone(&block_hash)?;
-        let blue_anticone_size = anticone_b.iter().filter(|h| blue_set.contains(h)).count() as u64;
+        let blue_anticone_count = {
+            let ac = dag.anticone(&block_hash)?;
+            ac.iter().filter(|h| blue_set.contains(h)).count() as u64
+        };
 
         // -----------------------------------------------------------
         // Step 3: Color decision.
         // -----------------------------------------------------------
-        let is_blue = blue_anticone_size <= k;
+        let is_blue = blue_anticone_count <= k;
         if is_blue {
             blue_set.insert(block_hash);
         } else {
@@ -105,11 +114,13 @@ pub fn color_dag(dag: &mut DagStore, k: u64) -> GhostDagResult<ColoringOutput> {
         // -----------------------------------------------------------
         // Step 4: blue_score(B) = |blue_set ∩ past(B)|
         // -----------------------------------------------------------
-        let past_b = dag.past(&block_hash)?;
-        let blue_score = past_b.iter().filter(|h| blue_set.contains(h)).count() as u64;
+        let blue_score = {
+            let past = dag.past(&block_hash)?;
+            past.iter().filter(|h| blue_set.contains(h)).count() as u64
+        };
 
         // -----------------------------------------------------------
-        // Step 5: blue_work(B) = blue_work(selected_parent) + (1 if blue else 0)
+        // Step 5: blue_work(B)
         // -----------------------------------------------------------
         let parent_blue_work = dag.get(&selected_parent)?.blue_work.clone();
         let blue_work = if is_blue {

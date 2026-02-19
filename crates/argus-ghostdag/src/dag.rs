@@ -116,29 +116,49 @@ impl DagStore {
     }
 
     /// **past(B)** — all ancestors of `B` (not including `B` itself).
-    /// BFS traversal backward through parent links.
-    pub fn past(&self, hash: &BlockHash) -> GhostDagResult<HashSet<BlockHash>> {
+    /// Uses memoization to stay O(1) after first computation.
+    pub fn past(&mut self, hash: &BlockHash) -> GhostDagResult<HashSet<BlockHash>> {
         if !self.headers.contains_key(hash) {
             return Err(GhostDagError::BlockNotFound(*hash));
         }
+        if let Some(cached) = self.past_cache.get(hash) {
+            return Ok(cached.clone());
+        }
+
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
+        
         // Seed with B's parents.
         for p in &self.get(hash)?.parents {
-            if visited.insert(*p) {
-                queue.push_back(*p);
+            // Optimization: if we already have past(P), add it and don't queue P's parents.
+            if let Some(p_past) = self.past_cache.get(p) {
+                visited.insert(*p);
+                visited.extend(p_past);
+            } else {
+                if visited.insert(*p) {
+                    queue.push_back(*p);
+                }
             }
         }
+
         while let Some(cur) = queue.pop_front() {
             if let Ok(hdr) = self.get(&cur) {
                 for p in &hdr.parents {
-                    if visited.insert(*p) {
-                        queue.push_back(*p);
+                    if let Some(p_past) = self.past_cache.get(p) {
+                        visited.insert(*p);
+                        visited.extend(p_past);
+                    } else {
+                        if visited.insert(*p) {
+                            queue.push_back(*p);
+                        }
                     }
                 }
             }
         }
         visited.remove(hash);
+        
+        // Memoize.
+        self.past_cache.insert(*hash, visited.clone());
         Ok(visited)
     }
 
@@ -170,7 +190,7 @@ impl DagStore {
 
     /// **anticone(B)** — all blocks that are neither in `past(B)`,
     /// `future(B)`, nor `B` itself.
-    pub fn anticone(&self, hash: &BlockHash) -> GhostDagResult<HashSet<BlockHash>> {
+    pub fn anticone(&mut self, hash: &BlockHash) -> GhostDagResult<HashSet<BlockHash>> {
         let past = self.past(hash)?;
         let future = self.future(hash)?;
         let all_hashes: HashSet<BlockHash> = self.headers.keys().copied().collect();

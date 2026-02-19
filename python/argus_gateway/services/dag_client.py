@@ -41,10 +41,7 @@ class DagClient:
     def _call(self, method: str, params: Optional[dict[str, Any]] = None) -> Any:
         """
         Send a JSON-RPC 2.0 request and return the result.
-
-        Raises:
-            ConnectionError: If the RPC server is unreachable.
-            RuntimeError: If the RPC returns an error.
+        Now with retry logic and robust chunk reading.
         """
         request = {
             "jsonrpc": "2.0",
@@ -55,49 +52,56 @@ class DagClient:
             request["params"] = params
 
         payload = json.dumps(request).encode("utf-8")
+        
+        # Retry parameters.
+        max_retries = 3
+        retry_delay = 0.5
 
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-                sock.settimeout(self.config.timeout)
-                sock.connect((self.config.host, self.config.port))
-                sock.sendall(payload)
+        import time
 
-                # Read response (up to 64KB).
-                chunks: list[bytes] = []
-                while True:
-                    try:
-                        chunk = sock.recv(65536)
-                        if not chunk:
-                            break
-                        chunks.append(chunk)
-                        # Try to parse — if valid JSON, we're done.
+        last_err = None
+        for attempt in range(max_retries):
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                    sock.settimeout(self.config.timeout)
+                    sock.connect((self.config.host, self.config.port))
+                    sock.sendall(payload)
+
+                    # Read response dynamically.
+                    chunks: list[bytes] = []
+                    while True:
                         try:
-                            json.loads(b"".join(chunks))
+                            chunk = sock.recv(65536)
+                            if not chunk:
+                                break
+                            chunks.append(chunk)
+                            # Check if we have complete JSON.
+                            try:
+                                full_resp = b"".join(chunks).decode("utf-8")
+                                data = json.loads(full_resp)
+                                # Successfully parsed full response.
+                                if "error" in data and data["error"] is not None:
+                                    err = data["error"]
+                                    raise RuntimeError(
+                                        f"RPC error {err.get('code', '?')}: {err.get('message', 'unknown')}"
+                                    )
+                                return data.get("result")
+                            except json.JSONDecodeError:
+                                # Not full JSON yet, keep reading.
+                                continue
+                        except socket.timeout:
                             break
-                        except json.JSONDecodeError:
-                            continue
-                    except socket.timeout:
-                        break
+            except (ConnectionRefusedError, OSError) as e:
+                last_err = e
+                if attempt < max_retries - 1:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise ConnectionError(
+                    f"Cannot connect to Argus Linearizer at "
+                    f"{self.config.host}:{self.config.port} after {max_retries} attempts: {e}"
+                ) from e
 
-                raw = b"".join(chunks).decode("utf-8")
-        except (ConnectionRefusedError, OSError) as e:
-            raise ConnectionError(
-                f"Cannot connect to Argus Linearizer at "
-                f"{self.config.host}:{self.config.port}: {e}"
-            ) from e
-
-        if not raw:
-            raise RuntimeError("Empty response from RPC server")
-
-        data = json.loads(raw)
-
-        if "error" in data and data["error"] is not None:
-            err = data["error"]
-            raise RuntimeError(
-                f"RPC error {err.get('code', '?')}: {err.get('message', 'unknown')}"
-            )
-
-        return data.get("result")
+        raise RuntimeError(f"Failed to get valid response from RPC server: {last_err}")
 
     # ---- Typed methods ----
 
