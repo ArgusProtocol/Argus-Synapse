@@ -45,6 +45,19 @@ pub struct ServerState {
 }
 
 impl ServerState {
+    /// Create a new server state with initial DAG and k.
+    pub fn new(dag: DagStore, k: u64) -> Self {
+        let (ws_tx, _) = broadcast::channel(1024);
+        Self {
+            dag: Arc::new(RwLock::new(dag)),
+            coloring: Arc::new(RwLock::new(None)),
+            k: Arc::new(RwLock::new(k)),
+            agent_state: Arc::new(RwLock::new("INIT".to_string())),
+            rl_confidence: Arc::new(RwLock::new(1.0)),
+            ws_tx,
+        }
+    }
+
     /// Re-color the DAG and push a new snapshot to WebSocket clients.
     pub async fn recolor_and_broadcast(&self) -> Result<(), argus_ghostdag::GhostDagError> {
         let k = *self.k.read().await;

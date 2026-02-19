@@ -48,32 +48,59 @@ async fn main() -> anyhow::Result<()> {
             info!("Starting Argus Orchestration Layer...");
             info!("RPC Port: {}, WS Port: {}, k: {}", rpc_port, ws_port, k);
 
-            // Initialize the DAG with a genesis block for demo purposes.
             let mut dag = DagStore::new();
             let genesis_hash = BlockHash::from_byte(0x00);
             dag.add_genesis(BlockHeader::genesis(genesis_hash, 0))?;
             
-            let shared_state = Arc::new(RwLock::new(ServerState::new(dag, k)));
+            let shared_state = Arc::new(ServerState::new(dag, k));
+            
+            // Perform initial coloring.
+            shared_state.recolor_and_broadcast().await?;
 
             let config = ServerConfig {
-                rpc_port,
-                ws_port,
-                k,
+                ws_addr: format!("0.0.0.0:{}", ws_port).parse()?,
+                rpc_addr: format!("0.0.0.0:{}", rpc_port).parse()?,
             };
 
+            let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
             // Start the combined RPC + WebSocket server.
-            if let Err(e) = start_server(config, shared_state).await {
-                error!("Server failed: {}", e);
-                return Err(anyhow::anyhow!("Server failure: {}", e));
-            }
+            start_server(shared_state, config, shutdown_rx).await;
         }
         Commands::Check { endpoint } => {
             info!("Checking Argus connectivity at {}...", endpoint);
-            // In a full implementation, this would perform a ping to the RPC server.
-            // For now, we simulate a successful health check.
-            println!("Argus Gateway: [OK]");
-            println!("GhostDAG Node: [CONNECTED]");
-            println!("Agent State: [SYNCED]");
+            
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(5))
+                .build()?;
+            
+            let payload = serde_json::json!({
+                "jsonrpc": "2.0",
+                "method": "get_health",
+                "params": {},
+                "id": 1
+            });
+
+            match client.post(&endpoint).json(&payload).send().await {
+                Ok(resp) => {
+                    if resp.status().is_success() {
+                        let body: serde_json::Value = resp.json().await?;
+                        if let Some(result) = body.get("result") {
+                            println!("Argus Gateway: [OK]");
+                            println!("Agent State:   [{}]", result.get("agent_state").and_then(|v| v.as_str()).unwrap_or("UNKNOWN"));
+                            println!("Current K:     [{}]", result.get("current_k").and_then(|v| v.as_u64()).unwrap_or(0));
+                            println!("Total Blocks:  [{}]", result.get("total_blocks").and_then(|v| v.as_u64()).unwrap_or(0));
+                        } else if let Some(error) = body.get("error") {
+                            println!("Argus Gateway: [ERROR] - {}", error.get("message").and_then(|v| v.as_str()).unwrap_or("Internal Error"));
+                        }
+                    } else {
+                        println!("Argus Gateway: [UNREACHABLE] - Status {}", resp.status());
+                    }
+                }
+                Err(e) => {
+                    println!("Argus Gateway: [UNREACHABLE] - {}", e);
+                }
+            }
         }
     }
 
