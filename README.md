@@ -14,7 +14,7 @@ Argus is a **senior-grade orchestration layer** that sits on top of a GhostDAG /
 
 ---
 
-## 🏛 Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -55,7 +55,7 @@ Argus is a **senior-grade orchestration layer** that sits on top of a GhostDAG /
 
 ---
 
-## ⚙️ Prerequisites
+## Prerequisites
 
 | Tool | Version | Notes |
 |---|---|---|
@@ -66,7 +66,7 @@ Argus is a **senior-grade orchestration layer** that sits on top of a GhostDAG /
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Build and Initialize (Rust)
 ```bash
@@ -91,7 +91,7 @@ Argus is now accessible at **http://localhost:8080**.
 
 ---
 
-## 📊 API Reference
+## API Reference
 
 ### REST Endpoints
 
@@ -131,7 +131,7 @@ Real-time linearized block stream with PHANTOM total ordering.
 
 ---
 
-## 🧠 Under the Hood: The Math
+## Under the Hood: The Math
 
 ### PHANTOM Total Ordering
 Argus resolves parallel block conflicts by applying the PHANTOM sorting rule:
@@ -144,24 +144,24 @@ $$R = \omega_1(TPS) - \omega_2(OrphanRate) - \omega_3(SecurityMargin)$$
 
 ---
 
-## 🛡 Security and Reliability
+## Security and Reliability
 - **Memoized Traversals**: `past(B)` and `anticone(B)` use internal caching. Amortized $O(1)$.
 - **Thread Safety**: RwLock-protected DAG storage for parallel Read/Write throughput.
 - **RPC Resiliency**: Automatic retries and robust chunked JSON parsing.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 We welcome Protocol Engineers and Data Scientists. See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
 ---
 
-## 📜 License
+## License
 Distributed under the MIT License. See [LICENSE](LICENSE).
 
 ---
 
-## 📬 Contact
+## Contact
 **Alex** - Senior Principal Protocol Engineer  
 **Project**: Argus Orchestration Layer  
 **Website**: [argus-protocol.xyz](https://argus-protocol.xyz)
