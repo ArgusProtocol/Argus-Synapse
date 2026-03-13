@@ -1,0 +1,15 @@
+[package]
+name = "argus-ghostdag"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+num-bigint = { version = "0.4", features = ["serde"] }
+num-traits = "0.2"
+
+[dev-dependencies]
+tokio = { workspace = true }

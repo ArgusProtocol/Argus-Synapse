@@ -1,0 +1,18 @@
+[package]
+name = "argus-linearizer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+argus-ghostdag = { path = "../argus-ghostdag" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+[dev-dependencies]
+tokio = { workspace = true }
