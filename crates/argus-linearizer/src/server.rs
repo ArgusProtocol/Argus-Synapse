@@ -288,7 +288,7 @@ async fn run_rpc_server(
                     Ok((mut stream, peer)) => {
                         let state = state.clone();
                         tokio::spawn(async move {
-                            let mut buf = vec![0u8; 4096];
+                            let mut buf = vec![0u8; 65536]; // Increased to 64KB
                             match stream.read(&mut buf).await {
                                 Ok(n) if n > 0 => {
                                     let request = String::from_utf8_lossy(&buf[..n]).to_string();

@@ -1,9 +1,12 @@
 use clap::{Parser, Subcommand};
-use tracing::info;
+use tracing::{info, error, warn};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 
 use argus_ghostdag::{DagStore, BlockHash, BlockHeader};
 use argus_linearizer::{start_server, ServerConfig, ServerState};
+use argus_agent::{GhostDagAgent, RecoveryLoop, RecoveryConfig, channels::{command_channel, event_channel, AgentEvent}};
+use argus_node::KaspadClient;
 
 #[derive(Parser)]
 #[command(name = "argus")]
@@ -26,6 +29,9 @@ enum Commands {
         /// GhostDAG k-parameter
         #[arg(long, default_value_t = 3)]
         k: u64,
+        /// Kaspad RPC endpoint
+        #[arg(long, default_value = "http://127.0.0.1:16110")]
+        kaspad_rpc: String,
     },
     /// Check connectivity and health (connects via TCP JSON-RPC)
     Check {
@@ -43,7 +49,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Start { rpc_port, ws_port, k } => {
+        Commands::Start { rpc_port, ws_port, k, kaspad_rpc } => {
             info!("Starting Argus Orchestration Layer...");
             info!("RPC Port: {}, WS Port: {}, k: {}", rpc_port, ws_port, k);
 
@@ -53,27 +59,94 @@ async fn main() -> anyhow::Result<()> {
             
             let shared_state = Arc::new(ServerState::new(dag, k));
             
+            // Channels for Agent communication.
+            let (cmd_tx, cmd_rx) = command_channel(128);
+            let (event_tx, mut event_rx) = event_channel(128);
+
+            // Shutdown signal.
+            let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
+            // 1. Kaspad Client.
+            let kaspad = KaspadClient::new(kaspad_rpc, shared_state.dag.clone(), cmd_tx.clone());
+            let kaspad_shutdown = shutdown_rx.clone();
+            tokio::spawn(async move {
+                kaspad.run_ingestion_loop(kaspad_shutdown).await;
+            });
+
+            // 2. GhostDagAgent.
+            let agent = GhostDagAgent::new(shared_state.dag.clone(), Arc::new(kaspad), genesis_hash, k, cmd_rx, event_tx);
+            tokio::spawn(async move {
+                agent.run().await;
+            });
+
+            // 3. Recovery Loop.
+            let network_tip = Arc::new(RwLock::new(None));
+            let recovery_loop = RecoveryLoop::new(
+                shared_state.dag.clone(),
+                RecoveryConfig { k, ..Default::default() },
+                cmd_tx,
+                event_tx.clone(),
+                network_tip.clone(),
+                shutdown_rx.clone(),
+            );
+            tokio::spawn(async move {
+                recovery_loop.run().await;
+            });
+
+            // Event handler for agent state updates.
+            let state_for_events = shared_state.clone();
+            tokio::spawn(async move {
+                while let Some(event) = event_rx.recv().await {
+                    match event {
+                        AgentEvent::StateChanged { to, .. } => {
+                            let mut state_label = state_for_events.agent_state.write().await;
+                            *state_label = to.to_string();
+                        }
+                        AgentEvent::DivergenceDetected { network_tip: tip, .. } => {
+                            let mut nt = network_tip.write().await;
+                            *nt = Some(tip);
+                        }
+                        _ => {}
+                    }
+                }
+            });
+
             // Perform initial coloring.
             shared_state.recolor_and_broadcast().await?;
 
             let config = ServerConfig {
-                ws_addr: format!("0.0.0.0:{}", ws_port).parse()?,
-                rpc_addr: format!("0.0.0.0:{}", rpc_port).parse()?,
+                ws_addr = format!("0.0.0.0:{}", ws_port).parse()?,
+                rpc_addr = format!("0.0.0.0:{}", rpc_port).parse()?,
             };
 
-            let (_shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-
             // Start the combined RPC + WebSocket server.
-            start_server(shared_state, config, shutdown_rx).await;
+            let server_handle = tokio::spawn(start_server(shared_state, config, shutdown_rx));
+
+            // Graceful shutdown on Ctrl+C.
+            tokio::select! {
+                _ = tokio::signal::ctrl_c() => {
+                    info!("Shutdown signal received (Ctrl+C)");
+                    let _ = shutdown_tx.send(true);
+                }
+                _ = server_handle => {
+                    warn!("Server exited unexpectedly");
+                }
+            }
+
+            info!("Argus Layer shutting down...");
         }
         Commands::Check { endpoint } => {
             use tokio::io::{AsyncReadExt, AsyncWriteExt};
             use tokio::net::TcpStream;
 
-            info!("Checking Argus connectivity at {} (TCP JSON-RPC)...", endpoint);
+            // Strip http:// or tcp:// prefix if present.
+            let cleaned_endpoint = endpoint
+                .strip_prefix("http://")
+                .or_else(|| endpoint.strip_prefix("tcp://"))
+                .unwrap_or(&endpoint);
 
-            // The Argus RPC server communicates over raw TCP JSON-RPC 2.0,
-            // not HTTP. We replicate what dag_client.py does.
+            info!("Checking Argus connectivity at {} (TCP JSON-RPC)...", cleaned_endpoint);
+
             let payload = serde_json::json!({
                 "jsonrpc": "2.0",
                 "method": "get_health",
@@ -84,7 +157,7 @@ async fn main() -> anyhow::Result<()> {
 
             match tokio::time::timeout(
                 std::time::Duration::from_secs(5),
-                TcpStream::connect(&endpoint),
+                TcpStream::connect(cleaned_endpoint),
             )
             .await
             {

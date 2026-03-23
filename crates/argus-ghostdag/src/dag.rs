@@ -219,14 +219,8 @@ impl DagStore {
     /// Topological sort (Kahn's algorithm).  Genesis first, tips last.
     pub fn topological_order(&self) -> GhostDagResult<Vec<BlockHash>> {
         let mut in_degree: HashMap<BlockHash, usize> = HashMap::new();
-        for (hash, hdr) in &self.headers {
-            in_degree.entry(*hash).or_insert(0);
-            // Each parent contributes +1 to the child's in_degree — but
-            // in_degree is "number of parents", which we already know.
-            let _ = hdr; // handled below
-        }
         for hdr in self.headers.values() {
-            *in_degree.entry(hdr.hash).or_insert(0) = hdr.parents.len();
+            in_degree.insert(hdr.hash, hdr.parents.len());
         }
 
         let mut queue: VecDeque<BlockHash> = in_degree

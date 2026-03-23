@@ -1,0 +1,18 @@
+[package]
+name = "argus-node"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+serde = { workspace = true, features = ["derive"] }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = "0.1"
+argus-ghostdag = { path = "../argus-ghostdag" }
+argus-agent = { path = "../argus-agent" }
+reqwest = { version = "0.11", features = ["json"] }
+async-recursion = "1.0"
+tokio-tungstenite = "0.21"
+futures-util = "0.3"

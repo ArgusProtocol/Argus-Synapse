@@ -30,6 +30,8 @@ pub struct GhostDagAgent {
     state: AgentStateLabel,
     /// The shared DAG store (protected by RwLock for concurrent reads).
     dag: Arc<RwLock<DagStore>>,
+    /// Block fetcher for recovery.
+    fetcher: Arc<dyn crate::BlockFetcher>,
     /// The local tip hash.
     local_tip: BlockHash,
     /// The most recent network tip we know about.
@@ -46,6 +48,7 @@ impl GhostDagAgent {
     /// Create a new agent.
     pub fn new(
         dag: Arc<RwLock<DagStore>>,
+        fetcher: Arc<dyn crate::BlockFetcher>,
         local_tip: BlockHash,
         k: u64,
         cmd_rx: CommandRx,
@@ -54,6 +57,7 @@ impl GhostDagAgent {
         Self {
             state: AgentStateLabel::Synced,
             dag,
+            fetcher,
             local_tip,
             network_tip: None,
             k,
@@ -189,22 +193,34 @@ impl GhostDagAgent {
     }
 
     /// Handle the recovery process — fetch missing blocks and re-color.
-    async fn handle_start_recovery(&mut self, _lca: BlockHash, missing_blocks: Vec<BlockHash>) {
-        self.transition_to(AgentStateLabel::Recovering).await;
+        // 1. Fetch and ingest all missing blocks.
+        let mut fetched_headers = Vec::new();
+        for hash in missing_blocks {
+            match self.fetcher.fetch_block(&hash).await {
+                Ok(header) => fetched_headers.push(header),
+                Err(e) => {
+                    error!("Failed to fetch block {} during recovery: {e}", hash.to_hex());
+                    let _ = self.event_tx.send(AgentEvent::Error {
+                        message: format!("fetch failed for {}: {}", hash.to_hex(), e),
+                    }).await;
+                    // We continue with whatever we managed to fetch.
+                }
+            }
+        }
 
-        let blocks_to_recover = missing_blocks.len() as u64;
-        info!(
-            blocks = blocks_to_recover,
-            "Starting recovery — ingesting missing blocks"
-        );
-
-        // In a production system, we would fetch these blocks from peers.
-        // Here we simulate: check if blocks are already present, and
-        // re-run coloring.
         {
             let mut dag = self.dag.write().await;
 
-            // Re-color the DAG with the current k.
+            // Ingest fetched blocks.
+            for header in fetched_headers {
+                if !dag.contains(&header.hash) {
+                    if let Err(e) = dag.add_block(header) {
+                        warn!("Failed to add block to DAG during recovery: {e}");
+                    }
+                }
+            }
+
+            // 2. Re-color the DAG with the current k.
             match color_dag(&mut dag, self.k) {
                 Ok(coloring) => {
                     info!(
@@ -222,7 +238,7 @@ impl GhostDagAgent {
                 }
             }
 
-            // Update local tip to the highest blue-score block.
+            // 3. Update local tip to the highest blue-score block.
             if let Some(new_tip) = dag
                 .headers()
                 .max_by_key(|h| h.blue_score)

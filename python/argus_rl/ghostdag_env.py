@@ -52,6 +52,7 @@ class DagSimulator:
     recent_latencies: deque[float] = field(
         default_factory=lambda: deque(maxlen=100)
     )
+    _py_dag: Any = None
 
     def reset(self, k: int = 3) -> None:
         """Reset the simulator to genesis state."""
@@ -134,11 +135,29 @@ class DagSimulator:
         latency = max(1.0, latency)
         self.recent_latencies.append(latency)
 
-        # Determine coloring: simulate anticone intersection.
-        # The wider the DAG (more tips), the more likely a block is red.
-        anticone_blue_estimate = max(0, len(self.tips) - num_parents)
-
-        is_blue = anticone_blue_estimate <= self.k
+        # Use real GhostDAG coloring via PyBridge if available.
+        try:
+            from argus_pybridge import PyDagStore
+            
+            # This is inefficient to do every block in a simulator, 
+            # but for the RL environment it's necessary for accuracy.
+            # In a real training loop, we'd maintain the PyDagStore object.
+            if not hasattr(self, '_py_dag'):
+                self._py_dag = PyDagStore()
+                self._py_dag.add_genesis("00", 0)
+            
+            hash_hex = f"{self.next_id:02x}"
+            parents_hex = [f"{p:02x}" for p in parent_ids]
+            self._py_dag.add_block(hash_hex, parents_hex, int(self.next_id * 100 + latency))
+            
+            coloring = self._py_dag.color_dag(self.k)
+            # Check if this block is in the blue set.
+            is_blue = hash_hex in coloring['blue_set']
+            
+        except ImportError:
+            # Fallback to heuristic if pybridge not compiled.
+            anticone_blue_estimate = max(0, len(self.tips) - num_parents)
+            is_blue = anticone_blue_estimate <= self.k
 
         # Check for orphan: if latency is very high, block might be orphaned.
         is_orphan = latency > base_latency * 3.0

@@ -9,6 +9,8 @@ tokio = { version = "1.36", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
 argus-linearizer = { path = "../argus-linearizer" }
+argus-agent = { path = "../argus-agent" }
+argus-node = { path = "../argus-node" }
 argus-ghostdag = { path = "../argus-ghostdag" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

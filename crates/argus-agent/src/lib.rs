@@ -12,7 +12,16 @@ pub mod lca;
 pub mod recovery;
 pub mod state_machine;
 
+#[async_trait::async_trait]
+pub trait BlockFetcher: Send + Sync {
+    async fn fetch_block(
+        &self,
+        hash: &argus_ghostdag::BlockHash,
+    ) -> anyhow::Result<argus_ghostdag::BlockHeader>;
+}
+
 // Re-exports.
+// ... existing re-exports ...
 pub use channels::{
     command_channel, event_channel, AgentCommand, AgentEvent, AgentStateLabel,
     CommandRx, CommandTx, EventRx, EventTx,
