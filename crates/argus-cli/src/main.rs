@@ -67,17 +67,16 @@ async fn main() -> anyhow::Result<()> {
             let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
             // 1. Kaspad Client.
-            let kaspad = KaspadClient::new(kaspad_rpc, shared_state.dag.clone(), cmd_tx.clone());
+            let kaspad = Arc::new(KaspadClient::new(kaspad_rpc, shared_state.dag.clone(), cmd_tx.clone()));
+            let kaspad_for_ingestion = kaspad.clone();
             let kaspad_shutdown = shutdown_rx.clone();
-            tokio::spawn(async move {
-                kaspad.run_ingestion_loop(kaspad_shutdown).await;
+           tokio::spawn(async move {
+                 kaspad_for_ingestion.run_ingestion_loop(kaspad_shutdown).await;
             });
 
             // 2. GhostDagAgent.
-            let agent = GhostDagAgent::new(shared_state.dag.clone(), Arc::new(kaspad), genesis_hash, k, cmd_rx, event_tx);
-            tokio::spawn(async move {
-                agent.run().await;
-            });
+            let event_tx_agent = event_tx.clone();
+            let agent = GhostDagAgent::new(shared_state.dag.clone(), kaspad, genesis_hash, k, cmd_rx, event_tx_agent);
 
             // 3. Recovery Loop.
             let network_tip = Arc::new(RwLock::new(None));
