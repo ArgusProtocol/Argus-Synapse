@@ -115,10 +115,10 @@ async fn main() -> anyhow::Result<()> {
             shared_state.recolor_and_broadcast().await?;
 
             let config = ServerConfig {
-                ws_addr = format!("0.0.0.0:{}", ws_port).parse()?,
-                rpc_addr = format!("0.0.0.0:{}", rpc_port).parse()?,
+               ws_addr: format!("0.0.0.0:{}", ws_port).parse()?,
+               rpc_addr: format!("0.0.0.0:{}", rpc_port).parse()?,
             };
-
+    
             // Start the combined RPC + WebSocket server.
             let server_handle = tokio::spawn(start_server(shared_state, config, shutdown_rx));
 
