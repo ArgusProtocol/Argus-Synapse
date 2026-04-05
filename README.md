@@ -311,6 +311,6 @@ Distributed under the MIT License. See [LICENSE](LICENSE).
 ---
 
 ## Contact
-**Fortune** - Senior Principal Protocol Engineer  
+**Rick** - Senior Principal Protocol Engineer  
 **Project**: Argus Orchestration Layer  
 **Website**: [argus-protocol.xyz](https://argus-protocol.xyz)
